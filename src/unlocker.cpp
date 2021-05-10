@@ -2,11 +2,11 @@
 	Unlocker - Patcher + Tools Downloader
 	Created by Paolo Infante
 
-	Based on "Unlocker" by DrDonk for a native solution to python errors and 
+	Based on "Unlocker" by DrDonk for a native solution to python errors and
 	virus warnings.
 
 	I coded from scratch all the patch routines (I tried to be consistent with C++ library usage
-	though you'll probably find a few memcpy here and there...) and tools download (using 
+	though you'll probably find a few memcpy here and there...) and tools download (using
 	libcurl for download and libarchive to uncompress the archives)
 
 	Should be cross-platform. Tested on Windows, I'm planning to test it on linux too
@@ -53,8 +53,8 @@
 
 void preparePatch(fs::path backupPath);
 void doPatch();
-void downloadTools(std::string path);
-void copyTools(std::string toolspath);
+void downloadTools(fs::path path);
+void copyTools(fs::path toolspath);
 void stopServices();
 void restartServices();
 
@@ -75,7 +75,7 @@ int main(int argc, const char* argv[])
 		logd("The program is not running as root, the patch may not work properly.");
 		std::cout << "Running the program with sudo/as root is recommended, in most cases required... Do you want to continue? (y/N) ";
 		char c = getc(stdin);
-		
+
 		if (c != 'y' && c != 'Y')
 		{
 			logd("Aborting...");
@@ -93,6 +93,8 @@ int main(int argc, const char* argv[])
 			showhelp();
 		else if (stricmp(arg, INSTALL_OPTION) == 0)
 			install();
+		else if (stricmp(arg, DOWNLOADONLY_OPTION) == 0)
+			downloadTools(fs::path(".") / TOOLS_DOWNLOAD_FOLDER);
 		else
 		{
 			logd("Unrecognized command.");
@@ -106,18 +108,21 @@ int main(int argc, const char* argv[])
 		{
 			std::cout << "A backup folder has been found. Do you wish to uninstall the previous patch? Type y to uninstall, n to continue with installation." << std::endl
 				<< "(Y/n) ";
-			
+
 			char c = getc(stdin);
 
 			if (c == 'n' || c == 'N')
 				install();
 			else
 				uninstall();
-		} else install();
+		}
+		else install();
 	}
 
+#ifdef _WIN32
 	logd("Press enter to quit.");
 	getc(stdin);
+#endif
 
 	return 0;
 }
@@ -125,7 +130,7 @@ int main(int argc, const char* argv[])
 void install()
 {
 	// Default output path is ./tools/
-	std::string toolsdirectory = (fs::path(".") / TOOLS_DOWNLOAD_FOLDER / "").string();
+	fs::path toolsdirectory = fs::path(".") / TOOLS_DOWNLOAD_FOLDER;
 	// Default backup path is ./backup/
 	fs::path backup = fs::path(".") / BACKUP_FOLDER;
 
@@ -135,7 +140,7 @@ void install()
 	logd("Patching files...");
 	doPatch();
 
-	logd("Downloading tools into \"" + toolsdirectory + "\" directory...");
+	logd("Downloading tools into \"" + toolsdirectory.string() + "\" directory...");
 
 	if (fs::exists(fs::path(".") / TOOLS_DOWNLOAD_FOLDER / FUSION_ZIP_TOOLS_NAME) && fs::exists(fs::path(".") / TOOLS_DOWNLOAD_FOLDER / FUSION_ZIP_PRE15_TOOLS_NAME))
 	{
@@ -307,13 +312,14 @@ void showhelp()
 		<< "Run the program with one of these options:" << std::endl
 		<< "	--install (default): install the patch" << std::endl
 		<< "	--uninstall: remove the patch" << std::endl
+		<< "	--download-tools: only download the tools" << std::endl
 		<< "	--help: show this help message" << std::endl;
 }
 
 // Other methods
 
 // Copy tools to VMWare directory
-void copyTools(std::string toolspath)
+void copyTools(fs::path toolspath)
 {
 #ifdef _WIN32
 	VMWareInfoRetriever vmInfo;
@@ -327,11 +333,11 @@ void copyTools(std::string toolspath)
 		else
 			logerr("File \"" + (toolsfrom / FUSION_ZIP_TOOLS_NAME).string() + "\" could not be copied.");
 	}
-	catch (const std::exception & e)
+	catch (const std::exception& e)
 	{
 		logerr(e.what());
 	}
-	
+
 	try
 	{
 		if (fs::copy_file(toolsfrom / FUSION_ZIP_PRE15_TOOLS_NAME, copyto / FUSION_ZIP_PRE15_TOOLS_NAME))
@@ -339,7 +345,7 @@ void copyTools(std::string toolspath)
 		else
 			logerr("File \"" + (toolsfrom / FUSION_ZIP_PRE15_TOOLS_NAME).string() + "\" could not be copied.");
 	}
-	catch (const std::exception & e)
+	catch (const std::exception& e)
 	{
 		logerr(e.what());
 	}
@@ -354,7 +360,7 @@ void copyTools(std::string toolspath)
 		else
 			logerr("File \"" + (toolsfrom / FUSION_ZIP_TOOLS_NAME).string() + "\" could not be copied.");
 	}
-	catch (const std::exception & e)
+	catch (const std::exception& e)
 	{
 		logerr(e.what());
 	}
@@ -366,7 +372,7 @@ void copyTools(std::string toolspath)
 		else
 			logerr("File \"" + (toolsfrom / FUSION_ZIP_PRE15_TOOLS_NAME).string() + "\" could not be copied.");
 	}
-	catch (const std::exception & e)
+	catch (const std::exception& e)
 	{
 		logerr(e.what());
 	}
@@ -379,7 +385,7 @@ void doPatch()
 #ifdef _WIN32
 	// Setup paths
 	VMWareInfoRetriever vmInfo;
-	
+
 	std::string binList[] = VM_WIN_PATCH_FILES;
 
 	fs::path vmwarebase_path = vmInfo.getInstallPath();
@@ -389,17 +395,17 @@ void doPatch()
 	fs::path vmx_stats = vmx_path / binList[2];
 	fs::path vmwarebase = vmwarebase_path / binList[3];
 
-	if(!fs::exists(vmx))
+	if (!fs::exists(vmx))
 	{
 		KILL(logerr("Vmx file not found"));
 	}
-	if(!fs::exists(vmx_debug))
+	if (!fs::exists(vmx_debug))
 	{
-		KILL(logerr("Vmx file not found"));
+		KILL(logerr("Vmx-debug file not found"));
 	}
-	if(!fs::exists(vmwarebase))
+	if (!fs::exists(vmwarebase))
 	{
-		KILL(logerr("Vmx file not found"));
+		KILL(logerr("vmwarebase.dll file not found"));
 	}
 
 	logd("File: " + vmx.filename().string());
@@ -437,15 +443,15 @@ void doPatch()
 		vmxso = false;
 	}
 
-        if(!fs::exists(vmx))
+	if (!fs::exists(vmx))
 	{
 		KILL(logerr("Vmx file not found"));
 	}
-        if(!fs::exists(vmx_debug))
+	if (!fs::exists(vmx_debug))
 	{
 		KILL(logerr("Vmx-debug file not found"));
 	}
-	if(!fs::exists(vmlib))
+	if (!fs::exists(vmlib))
 	{
 		KILL(logerr("Vmlib file not found"));
 	}
@@ -499,7 +505,7 @@ void stopServices()
 			else
 				logerr("Could not kill process \"" + process + "\".");
 		}
-		catch (const ServiceStopper::ServiceStopException & ex)
+		catch (const ServiceStopper::ServiceStopException& ex)
 		{
 			logerr(ex.what());
 		}
@@ -519,7 +525,7 @@ void restartServices()
 			ServiceStopper::StartService_s(*it);
 			logd("Service \"" + *it + "\" started successfully.");
 		}
-		catch (const ServiceStopper::ServiceStopException & ex)
+		catch (const ServiceStopper::ServiceStopException& ex)
 		{
 			// There is no need to inform the user that the service cannot be started if that service does not exist in the current version.
 			//logerr("Couldn't start service " + *it);
@@ -579,7 +585,7 @@ void preparePatch(fs::path backupPath)
 			else
 				logerr("File \"" + fPath.string() + "\" could not be copied.");
 		}
-		catch (const std::exception & e)
+		catch (const std::exception& e)
 		{
 			logerr(e.what());
 		}
@@ -601,7 +607,7 @@ void preparePatch(fs::path backupPath)
 
 				break;
 			}
-			catch (const std::exception & e)
+			catch (const std::exception& e)
 			{
 				logerr(e.what());
 			}
@@ -612,15 +618,15 @@ void preparePatch(fs::path backupPath)
 	logerr("OS not supported");
 	exit(1); // Better stop before messing things up
 #endif
-}
+	}
 
 // Download tools into "path"
-void downloadTools(std::string path)
+void downloadTools(fs::path path)
 {
 	fs::path temppath = fs::temp_directory_path(); // extract files in the temp folder first
 
 	fs::create_directory(path); // create destination directory if it doesn't exist
-	
+
 	curl_global_init(CURL_GLOBAL_ALL);
 
 	std::string url = FUSION_BASE_URL;
@@ -666,8 +672,8 @@ void downloadTools(std::string path)
 
 			if (toolsAvailable) // if tools were successfully downloaded, extract them to destination folder
 			{
-				success = Archive::extract_s(temppath / FUSION_DEF_TOOLS_NAME, FUSION_DEF_TOOLS_ZIP, temppath / FUSION_DEF_TOOLS_ZIP);
-				success &= Archive::extract_s(temppath / FUSION_DEF_PRE15_TOOLS_NAME, FUSION_DEF_PRE15_TOOLS_ZIP, temppath / FUSION_DEF_PRE15_TOOLS_ZIP);
+				success = Archive::extract_tar(temppath / FUSION_DEF_TOOLS_NAME, FUSION_DEF_TOOLS_ZIP, temppath / FUSION_DEF_TOOLS_ZIP);
+				success &= Archive::extract_tar(temppath / FUSION_DEF_PRE15_TOOLS_NAME, FUSION_DEF_PRE15_TOOLS_ZIP, temppath / FUSION_DEF_PRE15_TOOLS_ZIP);
 
 				if (!success)
 				{
@@ -675,8 +681,8 @@ void downloadTools(std::string path)
 					continue;
 				}
 
-				success = Archive::extract_s(temppath / FUSION_DEF_TOOLS_ZIP, FUSION_TAR_TOOLS_ISO, path + FUSION_ZIP_TOOLS_NAME);
-				success &= Archive::extract_s(temppath / FUSION_DEF_PRE15_TOOLS_ZIP, FUSION_TAR_PRE15_TOOLS_ISO, path + FUSION_ZIP_PRE15_TOOLS_NAME);
+				success = Archive::extract_zip(temppath / FUSION_DEF_TOOLS_ZIP, FUSION_TAR_TOOLS_ISO, path / FUSION_ZIP_TOOLS_NAME);
+				success &= Archive::extract_zip(temppath / FUSION_DEF_PRE15_TOOLS_ZIP, FUSION_TAR_PRE15_TOOLS_ISO, path / FUSION_ZIP_PRE15_TOOLS_NAME);
 
 				// Cleanup zips
 				fs::remove(temppath / FUSION_DEF_TOOLS_ZIP);
@@ -700,14 +706,14 @@ void downloadTools(std::string path)
 				// No tools available, try getting them from core fusion file
 				std::string coreurl = buildurl + FUSION_DEF_CORE_LOC;
 				std::string core_diskpath = (temppath / FUSION_DEF_CORE_NAME).string();
-				
+
 				if (Curl::curlDownload(coreurl, core_diskpath) == CURLE_OK) // If the core package was successfully downloaded, extract the tools from it
 				{
 					logd("Extracting from .tar to temp folder ...");
-					
+
 					fs::path temppath = fs::temp_directory_path();
 
-					success = Archive::extract_s(temppath/FUSION_DEF_CORE_NAME, FUSION_DEF_CORE_NAME_ZIP, temppath/FUSION_DEF_CORE_NAME_ZIP);
+					success = Archive::extract_tar(temppath / FUSION_DEF_CORE_NAME, FUSION_DEF_CORE_NAME_ZIP, temppath / FUSION_DEF_CORE_NAME_ZIP);
 					if (!success) {
 						logerr("Couldn't extract from the tar file");
 						// Error in the tar file, try the next version number
@@ -716,8 +722,8 @@ void downloadTools(std::string path)
 
 					logd("Extracting from .zip to destination folder ...");
 
-					success = Archive::extract_s(temppath / FUSION_DEF_CORE_NAME_ZIP, FUSION_ZIP_TOOLS_ISO, path + FUSION_ZIP_TOOLS_NAME);
-					success = Archive::extract_s(temppath / FUSION_DEF_CORE_NAME_ZIP, FUSION_ZIP_PRE15_TOOLS_ISO, path + FUSION_ZIP_PRE15_TOOLS_NAME);
+					success = Archive::extract_zip(temppath / FUSION_DEF_CORE_NAME_ZIP, FUSION_ZIP_TOOLS_ISO, path / FUSION_ZIP_TOOLS_NAME);
+					success &= Archive::extract_zip(temppath / FUSION_DEF_CORE_NAME_ZIP, FUSION_ZIP_PRE15_TOOLS_ISO, path / FUSION_ZIP_PRE15_TOOLS_NAME);
 
 					// Cleanup zip file
 					fs::remove(temppath / FUSION_DEF_CORE_NAME_ZIP);
